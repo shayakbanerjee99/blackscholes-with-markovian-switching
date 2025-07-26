@@ -1,0 +1,24 @@
+ialun_db.sqlite
+.DS_Store
+AAPL_opts.csv
+AAPL.csv
+blackScholes.ipynb
+BSHelper.py
+Gantt chart.xlsx
+HDFCBANK_10D_Rolling_Volatility.png
+ialunmpeymkihhip.csv
+lloyds_1y.csv
+markov_chain.ipynb
+mixture_test.ipynb
+Nifty 50 Data.xlsx
+Nifty 50 Data(nifty 50 idx data).csv
+NIFTY Index (NSE Nifty 50 Index) 2025-05-14 16-24-43.jpg
+nifty_50_idx.csv
+small_duration.ipynb
+spx_ndx_rut.csv
+TSFR1and3M.csv
+vix.csv
+__pycache__/BSHelper.cpython-313.pyc
+AAPL/AAPL_opts.csv
+AAPL/b3.ipynb
+AAPL/rpxgm9usbjnu468y.csv
