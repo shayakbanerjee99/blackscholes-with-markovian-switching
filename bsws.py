@@ -256,21 +256,32 @@ def make_index_plot():
         returnfig=True,
         panel_ratios=(3, 2)
     )
+    
+    ax_ohlc = axlist[0]
+    legend_lines_top = [
+        mlines.Line2D([], [], color='red', linestyle='-', linewidth=0.2, label='Training Cutoff')
+    ]
+    ax_ohlc.legend(handles=legend_lines_top, loc='lower right')
+    
 
     ax_volatility = axlist[2]
-    legend_lines = [
+    legend_lines_bottom = [
         mlines.Line2D([], [], color='blue', linestyle='-', label='Realized Volatility'),
         mlines.Line2D([], [], color='darkolivegreen', linestyle='-', label='Garman-Klass Volatility'),
         mlines.Line2D([], [], color='red', linestyle='--', label='Parkinson Volatility'),
         mlines.Line2D([], [], color='purple', linestyle='-.', label='VIX'),
+        mlines.Line2D([], [], color='red', linestyle='-', linewidth=0.2, label='Training Cutoff')
     ]
 
-    ax_volatility.legend(handles=legend_lines, loc='upper right')
+    ax_volatility.legend(handles=legend_lines_bottom, loc='upper right')
     fig.tight_layout()
 
     mpf.show()
 
 # make_index_plot()
+# %%
+
+#%%
 
 # Load interest rates data
 sofr = pd.read_csv('TSFR1and3M.csv')
@@ -282,18 +293,36 @@ end_date = spx_price.index.max()
 sofr = sofr[(sofr.index >= start_date) & (sofr.index <= end_date)]
 print(f"Index Data - Start date: {start_date}, End date: {end_date}")
 
-# Plot index rates
-# plt.plot(sofr.index, sofr.TSFR1M, linewidth=1)
-# plt.show()
+def plot_interest_rates():
+    plt.figure(figsize=(10, 6)) # Optional: Adjust figure size for better readability
+    plt.plot(sofr.index, sofr.TSFR1M, linewidth=1)
 
+    # Add labels and title
+    plt.xlabel('Date')
+    plt.ylabel('Interest Rate')
+    plt.title('Interest Rates')
+
+    # Transform xlabel to 45 degrees
+    plt.xticks(rotation=45)
+
+    # Improve layout to prevent labels from overlapping
+    plt.tight_layout()
+
+    # Show the plot
+    plt.show()
+    
+# plot_interest_rates()
 
 # %%
 # Split test and train
 spx_train = spx_price.loc[:training_cutoff_date]
 spx_test  = spx_price.loc[training_cutoff_date:]
 
-# Generate a Q Matrix for realized 21 period volatility
+# Generate a Q Matrix for the selected volatility type
 volatility = spx_train['realized_21period_vol'].copy()
+# volatility = spx_train['parkinson_21period_vol'].copy()
+# volatility = spx_train['gk_21period_vol'].copy()
+# volatility = spx_train['vix'].copy()
 volatility.name = 'volatility'
 vol_state_test_df = bsHelper.qcut_volatility(volatility, nStates=3)
 
@@ -380,7 +409,7 @@ def plot_stock_price_simulation_histogram():
     plt.legend()
     plt.show()
     
-# plot_stock_price_simulation_histogram()
+plot_stock_price_simulation_histogram()
 
 ST_actual = spx_price.loc[expiry_date].close
 
@@ -441,7 +470,7 @@ def plot_estimated_call_vs_actual_call():
     plt.legend()
     plt.show()
     
-plot_estimated_call_vs_actual_call()
+# plot_estimated_call_vs_actual_call()
 
 # %%
 # Compute Implied volatilities for actual prices and calculated prices
@@ -490,4 +519,5 @@ def plot_ivs(estimated_calls_df):
     plt.show()
 
 plot_ivs(estimated_calls_df)
-    
+
+# %%
