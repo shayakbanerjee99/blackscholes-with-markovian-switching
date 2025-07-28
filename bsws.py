@@ -34,10 +34,11 @@ class BSHelper:
         dc_dsigma_val = (St + K*np.exp(-r*T))*dphi_dsigma - K*np.exp(-r*T)*np.sqrt(T)
         return dc_dsigma_val
     
-    def newton_rhapson(self, St, K, r, T, t, sigma_est, call_price, tolerance=0.001, suppressLogs=False, max_iterations: int = 1000) -> float:
+    def newton_rhapson(self, St, K, r, T, t, sigma_est, call_price, tolerance=0.001, suppressLogs=False, max_iterations: int = 1000, showDiagnosticPlots=False) -> float:
         sigma = sigma_est
         
         sigma_values = []
+        fx_values = []
 
         for i in range(0, max_iterations):
             fx = call_price - self.black_scholes(St, K, r, T, t, sigma)
@@ -58,16 +59,25 @@ class BSHelper:
                 break
             
             if i == max_iterations-1:
-                # DEBUG Plot TODO: Comment this out
-                # plt.plot(range(0, len(sigma_values)), sigma_values)
-                # plt.show()
+                if showDiagnosticPlots:
+                    fig, (ax1, ax2) = plt.subplots(figsize=(10, 6), ncols=2)
+                    ax1.plot(range(0, len(sigma_values)), sigma_values)
+                    ax1.set_ylabel('sigma')
+                    ax1.set_xlabel('iteration')
+                    ax2.plot(range(0, len(fx_values)), fx_values)
+                    ax2.set_ylabel('f(x)')
+                    ax2.set_xlabel('iteration')
+                    fig.tight_layout()
+                    plt.show()
                 
                 warning_message = f'cound not find root after {max_iterations} iterations for strike {K}, returning the latest value of sigma'
                 warnings.warn(warning_message)
             
             sigma = sigma_next
             
-            sigma_values.append(sigma)
+            if showDiagnosticPlots:
+                sigma_values.append(sigma)
+                fx_values.append(fx)
             
 
         if not suppressLogs:
@@ -279,7 +289,6 @@ def make_index_plot():
     mpf.show()
 
 # make_index_plot()
-# %%
 
 #%%
 
@@ -379,30 +388,30 @@ ctmc_sigmas = bsHelper.get_ctmc_sigmas(generated_ctmc, unique_states)
 def stock_price_monte_carlo(S0, mu, ctmc_sigmas, nTrials, time_to_expiry):
     Z_t = np.random.normal(0, 1, size=nTrials)
     # Sigma is ctmc_sigmas
-    t = time_to_expiry/252
+    t = time_to_expiry/252.25
     exponential_term = np.exp((mu - 0.5 * ctmc_sigmas**2)*t + ctmc_sigmas*np.sqrt(t)*Z_t)
-    St_monte_carlo = S0 * exponential_term
+    ST_monte_carlo = S0 * exponential_term
     
-    return St_monte_carlo
+    return ST_monte_carlo
 
 mu = r
-# S0 is previous day's price which will be used to estimate the fair price of the stock at curdate
-S0 = spx_price['close'].iloc[spx_price.index.get_loc(curdate) - 1]
-St_monte_carlo = stock_price_monte_carlo(S0, mu, ctmc_sigmas, nTrials, T)
-St_monte_carlo_mean = np.round(St_monte_carlo.mean(), 4)
-St_monte_carlo_std = np.round(St_monte_carlo.std(), 4)
+# S0 is previous day's price which will be used to estimate the fair price of the stock at expiry
+S0 = spx_price['close'].iloc[spx_price.index.get_loc(curdate)]
+ST_monte_carlo = stock_price_monte_carlo(S0, mu, ctmc_sigmas, nTrials, T)
+ST_monte_carlo_mean = np.round(ST_monte_carlo.mean(), 4)
+ST_monte_carlo_std = np.round(ST_monte_carlo.std(), 4)
 
 def plot_stock_price_simulation_histogram():
     plt.figure(figsize=(10, 6))
-    plt.hist(St_monte_carlo, bins=500, color='skyblue', alpha=0.7)
-    St_monte_carlo_labels = {
-        'Mean': ('Mean = ' + str(St_monte_carlo_mean)),
-        'upper_sd': ('+1 Std Dev = ' + str(np.round(St_monte_carlo_mean + St_monte_carlo_std, 4))),
-        'lower_sd': ('-1 Std Dev = ' + str(np.round(St_monte_carlo_mean - St_monte_carlo_std, 4)))
+    plt.hist(ST_monte_carlo, bins=500, color='skyblue', alpha=0.7)
+    ST_monte_carlo_labels = {
+        'Mean': ('Mean = ' + str(ST_monte_carlo_mean)),
+        'upper_sd': ('+1 Std Dev = ' + str(np.round(ST_monte_carlo_mean + ST_monte_carlo_std, 4))),
+        'lower_sd': ('-1 Std Dev = ' + str(np.round(ST_monte_carlo_mean - ST_monte_carlo_std, 4)))
     }
-    plt.axvline(St_monte_carlo_mean, color='red', linestyle='-', linewidth=1, label=St_monte_carlo_labels['Mean'])
-    plt.axvline(np.round(St_monte_carlo_mean + St_monte_carlo_std, 4), color='green', linestyle='--', linewidth=1, label=St_monte_carlo_labels['upper_sd'])
-    plt.axvline(np.round(St_monte_carlo_mean - St_monte_carlo_std, 4), color='green', linestyle='--', linewidth=1, label=St_monte_carlo_labels['lower_sd'])
+    plt.axvline(ST_monte_carlo_mean, color='red', linestyle='-', linewidth=1, label=ST_monte_carlo_labels['Mean'])
+    plt.axvline(np.round(ST_monte_carlo_mean + ST_monte_carlo_std, 4), color='green', linestyle='--', linewidth=1, label=ST_monte_carlo_labels['upper_sd'])
+    plt.axvline(np.round(ST_monte_carlo_mean - ST_monte_carlo_std, 4), color='green', linestyle='--', linewidth=1, label=ST_monte_carlo_labels['lower_sd'])
     plt.xlabel('Simulated Stock Price')
     plt.ylabel('Frequency')
     plt.title('Histogram of Simulated Stock Price (Monte Carlo) (Log-Normal Distribution)')
@@ -415,15 +424,15 @@ ST_actual = spx_price.loc[expiry_date].close
 
 print(f'\n\nCurrent date = {curdate}, Expiry date = {expiry_date}')
 print(f'Strike Price = {K}, Interest Rate = {r}, Time to expiry (days) = {T}, S0 = {S0}')
-print(f'St_monte_carlo = {St_monte_carlo_mean}, ST_actual = {ST_actual}')
+print(f'ST_monte_carlo = {ST_monte_carlo_mean}, ST_actual = {ST_actual}')
 
 
-def estimate_call_option_price(St_monte_carlo, K):
+def estimate_call_option_price(ST_monte_carlo, K):
     '''Calculate payoff using the simulated stock prices'''
     def c_payoff(ST, K):
         return max(ST - K, 0)
 
-    call_option_prices = (np.vectorize(c_payoff))(St_monte_carlo, K)
+    call_option_prices = (np.vectorize(c_payoff))(ST_monte_carlo, K)
 
 
     average_payoff_at_expiry = np.mean(call_option_prices)
@@ -435,7 +444,7 @@ def estimate_call_option_price(St_monte_carlo, K):
     estimated_call_option_price = average_payoff_at_expiry * np.exp(-r * t_years)
     return estimated_call_option_price
 
-estimated_call_option_price = estimate_call_option_price(St_monte_carlo, K)
+estimated_call_option_price = estimate_call_option_price(ST_monte_carlo, K)
 
 # %%
 # Comparison of the computed call option value and the actual call option mid_price
@@ -450,7 +459,7 @@ print(f'Actual Call Option Price: {actual_call_option_price}')
 # For all strike prices, get the estimated and actual call option prices and store them in a dataframe
 estimated_calls_df = c_at_strike.copy()
 estimated_calls_df['estimated_calls'] = [
-    estimate_call_option_price(St_monte_carlo, K) for K in estimated_calls_df.index
+    estimate_call_option_price(ST_monte_carlo, K) for K in estimated_calls_df.index
 ]
 estimated_calls_df['estimated_calls'] = np.round(estimated_calls_df['estimated_calls'], 4)
 estimated_calls_df
@@ -470,7 +479,7 @@ def plot_estimated_call_vs_actual_call():
     plt.legend()
     plt.show()
     
-# plot_estimated_call_vs_actual_call()
+plot_estimated_call_vs_actual_call()
 
 # %%
 # Compute Implied volatilities for actual prices and calculated prices
@@ -478,28 +487,21 @@ def plot_estimated_call_vs_actual_call():
 # Takes 15s in multi threaded mode with 5 cores
 def compute_ivs(row):
     K, row_data = row
-    try:
-        iv_estimated = bsHelper.newton_rhapson(
-            St_monte_carlo_mean, K, r, T, t, 0.16, row_data.estimated_calls, max_iterations=20000, suppressLogs=True
-        )
-    except Exception as e:
-        print(f"Failed to compute iv_estimated for K={K}, estimated_calls={row_data.estimated_calls}: {e}")
-        iv_estimated = 0.16
 
-    try:
-        iv_actual = bsHelper.newton_rhapson(
-            St_monte_carlo_mean, K, r, T, t, 0.16, row_data.mid_price, max_iterations=20000, suppressLogs=True
-        )
-    except Exception as e:
-        print(f"{e}")
-        iv_actual = 0.16
+    iv_estimated = bsHelper.newton_rhapson(
+        ST_monte_carlo_mean, K, r, T, t, 0.16, row_data.estimated_calls, max_iterations=20000, suppressLogs=True, showDiagnosticPlots=True
+    )
+
+    iv_actual = bsHelper.newton_rhapson(
+        ST_actual, K, r, T, t, 0.16, row_data.mid_price, max_iterations=20000, suppressLogs=True, showDiagnosticPlots=True
+    )
 
     return iv_estimated, iv_actual
 
 
 with multiprocessing.get_context("fork").Pool(5) as pool:
     results = pool.map(compute_ivs, estimated_calls_df.iterrows())
-
+    
 iv_estimated_list, iv_actual_list = zip(*results)
 estimated_calls_df['iv_estimated'] = iv_estimated_list
 estimated_calls_df['iv_actual'] = iv_actual_list
