@@ -1,5 +1,5 @@
 ## Installing in windows
-winget install Git.Git
+```winget install Git.Git
 winget install -e --id Microsoft.VisualStudioCode
 winget install -e --id Python.Python.3.12
 
@@ -10,4 +10,4 @@ cd git
 Switch to command prompt
 venv\Scripts\activate.bat
 
-git clone https://github.com/shayakbanerjee99/blackscholes-with-markovian-switching.git
+git clone https://github.com/shayakbanerjee99/blackscholes-with-markovian-switching.git```
