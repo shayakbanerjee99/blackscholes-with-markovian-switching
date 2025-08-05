@@ -33,6 +33,8 @@ class BSHelper:
         dphi_dsigma = np.sqrt(time)/2 - ((np.log(St/K) + r*T)/(sigma**2 * np.sqrt(time)))
         dc_dsigma_val = (St + K*np.exp(-r*T))*dphi_dsigma - K*np.exp(-r*T)*np.sqrt(T)
         return dc_dsigma_val
+        
+        
     
     def newton_rhapson(self, St, K, r, T, t, sigma_est, call_price, tolerance=0.001, suppressLogs=False, max_iterations: int = 1000, showDiagnosticPlots=False) -> float:
         sigma = sigma_est
@@ -487,6 +489,8 @@ plot_estimated_call_vs_actual_call()
 # Takes 15s in multi threaded mode with 5 cores
 def compute_ivs(row):
     K, row_data = row
+    
+    
 
     iv_estimated = bsHelper.newton_rhapson(
         ST_monte_carlo_mean, K, r, T, t, 0.16, row_data.estimated_calls, max_iterations=20000, suppressLogs=True, showDiagnosticPlots=True
@@ -495,6 +499,14 @@ def compute_ivs(row):
     iv_actual = bsHelper.newton_rhapson(
         ST_actual, K, r, T, t, 0.16, row_data.mid_price, max_iterations=20000, suppressLogs=True, showDiagnosticPlots=True
     )
+    
+    # iv_estimated = bsHelper.newton_rhapson(
+    #     spx_price.loc[curdate].close, K, r, T, t, 0.16, row_data.estimated_calls, max_iterations=20000, suppressLogs=True, showDiagnosticPlots=True
+    # )
+
+    # iv_actual = bsHelper.newton_rhapson(
+    #     spx_price.loc[curdate].close, K, r, T, t, 0.16, row_data.mid_price, max_iterations=20000, suppressLogs=True, showDiagnosticPlots=True
+    # )
 
     return iv_estimated, iv_actual
 
