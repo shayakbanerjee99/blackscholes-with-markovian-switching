@@ -1,4 +1,5 @@
 # %%
+# pip install pandas matplotlib mplfinance numpy scipy matplotlib
 import pandas as pd
 import matplotlib.pyplot as plt
 import mplfinance as mpf
@@ -36,7 +37,60 @@ class BSHelper:
         
         
     
-    def newton_rhapson(self, St, K, r, T, t, sigma_est, call_price, tolerance=0.001, suppressLogs=False, max_iterations: int = 1000, showDiagnosticPlots=False) -> float:
+    def newton_rhapson(self, St, K, r, T, t, sigma_est, call_price, tolerance=0.001, suppressLogs=False, suppressWarnings=False, max_iterations: int = 1000, showDiagnosticPlots=False) -> float:
+        """
+        Estimate the implied volatility using the Newton-Raphson method.
+
+        This method iteratively solves for the implied volatility (`sigma`)
+        that results in a theoretical Black-Scholes call price matching the given
+        market call price.
+
+        Parameters
+        ----------
+        St : float
+            Current stock price.
+        K : float
+            Strike price of the option.
+        r : float
+            Risk-free interest rate.
+        T : float
+            Expiration time of the option (in years).
+        t : float
+            Current time (in years).
+        sigma_est : float
+            Initial estimate for the volatility.
+        call_price : float
+            Market price of the European call option.
+        tolerance : float, optional
+            Acceptable tolerance level for convergence. Default is 0.001.
+        suppressLogs : bool, optional
+            If True, suppresses print statements during execution. Default is False.
+        suppressWarnings : bool, optional
+            If True, suppresses warning messages. Default is False.
+        max_iterations : int, optional
+            Maximum number of iterations to perform. Default is 1000.
+        showDiagnosticPlots : bool, optional
+            If True, plots diagnostic graphs of sigma and function values per iteration
+            when convergence is not achieved. Default is False.
+
+        Returns
+        -------
+        float
+            Estimated implied volatility (`sigma`) for the given market call price.
+
+        Raises
+        ------
+        Warning
+            If convergence is not achieved within `max_iterations`, a warning is issued
+            (unless `suppressWarnings` is True), and the latest estimate of sigma is returned.
+
+        Notes
+        -----
+        This method requires the following methods to be defined within the class:
+        - `black_scholes(...)` : Computes the theoretical call option price.
+        - `dc_dsigma(...)` : Computes the derivative of the call price with respect to volatility.
+
+        """
         sigma = sigma_est
         
         sigma_values = []
@@ -63,6 +117,7 @@ class BSHelper:
             if i == max_iterations-1:
                 if showDiagnosticPlots:
                     fig, (ax1, ax2) = plt.subplots(figsize=(10, 6), ncols=2)
+                    fig.suptitle(f'sigma and f(x) for K={K}')
                     ax1.plot(range(0, len(sigma_values)), sigma_values)
                     ax1.set_ylabel('sigma')
                     ax1.set_xlabel('iteration')
@@ -72,8 +127,9 @@ class BSHelper:
                     fig.tight_layout()
                     plt.show()
                 
-                warning_message = f'cound not find root after {max_iterations} iterations for strike {K}, returning the latest value of sigma'
-                warnings.warn(warning_message)
+                if not suppressWarnings:
+                    warning_message = f'cound not find root after {max_iterations} iterations for strike {K}, returning the latest value of sigma'
+                    warnings.warn(warning_message)
             
             sigma = sigma_next
             
@@ -330,32 +386,39 @@ spx_train = spx_price.loc[:training_cutoff_date]
 spx_test  = spx_price.loc[training_cutoff_date:]
 
 # Generate a Q Matrix for the selected volatility type
-volatility = spx_train['realized_21period_vol'].copy()
+# volatility = spx_train['realized_21period_vol'].copy()
 # volatility = spx_train['parkinson_21period_vol'].copy()
 # volatility = spx_train['gk_21period_vol'].copy()
-# volatility = spx_train['vix'].copy()
+volatility = spx_train['vix'].copy()
 volatility.name = 'volatility'
 vol_state_test_df = bsHelper.qcut_volatility(volatility, nStates=3)
 
 
 # %%
 # Simulate stock price using the ctmc
-curdate = spx_test.iloc[1:2].index[0]
-curdate_str = curdate.strftime('%Y-%m-%d')
-expiry_date = '2023-02-17'
+## Experiment 1
+# curdate = spx_test.iloc[8:9].index[0] 
+# curdate_str = curdate.strftime('%Y-%m-%d')
+# expiry_date = '2023-02-17'
+
+# Experiment 2
+curdate_str = '2023-04-20'
+curdate = pd.to_datetime(curdate_str)
+expiry_date = '2023-04-21'
+
 St = spx_price.loc[curdate_str].close
 
 # Query options data to get the option prices at curdate for a given expiry date
 query = """
     SELECT date, symbol, 
     best_bid, best_offer, ROUND((best_bid + best_offer)/2,2) AS mid_price, 
-    (strike_price/1000) AS strike_price, cp_flag, exdate, ticker exercise_style 
+    (strike_price/1000) AS strike_price, cp_flag, exdate, ticker, exercise_style 
     FROM ialun 
     WHERE ticker = 'SPX'
     AND date = '""" + curdate_str + """'
     AND exdate = '""" + expiry_date + """'
     AND cp_flag = 'C'
-    AND strike_price BETWEEN """ + str((St - 100)*1000) + ' AND ' + str((St + 100)*1000) + """
+    AND strike_price BETWEEN """ + str((St - 50)*1000) + ' AND ' + str((St + 50)*1000) + """
     AND symbol NOT LIKE 'SPXW%';
     """
 conn = sqlite3.connect('ialun_db.sqlite')
@@ -363,8 +426,8 @@ spx_options_data = pd.read_sql(query, conn)
 conn.close()
 
 strike_price = spx_options_data.iloc[4].strike_price
-K = strike_price
-r = sofr.loc[curdate_str].TSFR1M/100 # Converting interest to percentage
+K: float = strike_price
+r: float = sofr.loc[curdate_str].TSFR1M/100 # Converting interest to percentage
 r = np.log(1 + r) # Continuously compounding rate
 T = (pd.to_datetime(expiry_date) - curdate).days # time to expiry in days
 t = 0
@@ -397,13 +460,13 @@ def stock_price_monte_carlo(S0, mu, ctmc_sigmas, nTrials, time_to_expiry):
     return ST_monte_carlo
 
 mu = r
-# S0 is previous day's price which will be used to estimate the fair price of the stock at expiry
+# S0 is current day's price which will be used to estimate the fair price of the stock at expiry
 S0 = spx_price['close'].iloc[spx_price.index.get_loc(curdate)]
-ST_monte_carlo = stock_price_monte_carlo(S0, mu, ctmc_sigmas, nTrials, T)
+ST_monte_carlo: list = stock_price_monte_carlo(S0, mu, ctmc_sigmas, nTrials, T)
 ST_monte_carlo_mean = np.round(ST_monte_carlo.mean(), 4)
 ST_monte_carlo_std = np.round(ST_monte_carlo.std(), 4)
 
-def plot_stock_price_simulation_histogram():
+def plot_stock_price_simulation_histogram(ST_actual=None):
     plt.figure(figsize=(10, 6))
     plt.hist(ST_monte_carlo, bins=500, color='skyblue', alpha=0.7)
     ST_monte_carlo_labels = {
@@ -414,70 +477,142 @@ def plot_stock_price_simulation_histogram():
     plt.axvline(ST_monte_carlo_mean, color='red', linestyle='-', linewidth=1, label=ST_monte_carlo_labels['Mean'])
     plt.axvline(np.round(ST_monte_carlo_mean + ST_monte_carlo_std, 4), color='green', linestyle='--', linewidth=1, label=ST_monte_carlo_labels['upper_sd'])
     plt.axvline(np.round(ST_monte_carlo_mean - ST_monte_carlo_std, 4), color='green', linestyle='--', linewidth=1, label=ST_monte_carlo_labels['lower_sd'])
+
+    if ST_actual:
+        ST_actual_label = f'Actual price at T = {ST_actual}'
+        plt.axvline(ST_actual, color='black', linestyle='-.', linewidth=1, label=ST_actual_label)
+
     plt.xlabel('Simulated Stock Price')
     plt.ylabel('Frequency')
     plt.title('Histogram of Simulated Stock Price (Monte Carlo) (Log-Normal Distribution)')
     plt.legend()
     plt.show()
     
-plot_stock_price_simulation_histogram()
 
 ST_actual = spx_price.loc[expiry_date].close
+
+plot_stock_price_simulation_histogram(ST_actual=ST_actual)
 
 print(f'\n\nCurrent date = {curdate}, Expiry date = {expiry_date}')
 print(f'Strike Price = {K}, Interest Rate = {r}, Time to expiry (days) = {T}, S0 = {S0}')
 print(f'ST_monte_carlo = {ST_monte_carlo_mean}, ST_actual = {ST_actual}')
 
+print('curdate,expiry_date,strike_price,ST_monte_carlo,ST_actual')
+print(f'{curdate_str},{expiry_date},{K},{ST_monte_carlo_mean},{ST_actual}')
 
-def estimate_call_option_price(ST_monte_carlo, K):
-    '''Calculate payoff using the simulated stock prices'''
-    def c_payoff(ST, K):
-        return max(ST - K, 0)
+#%%
+# Estimate the call option price using the simulated stock prices
+def estimate_call_option_price_with_error(ST_monte_carlo: list | float, K: float, T: float, r: float, showHistogram: bool=False):
+    """
+    Estimate the European call option price from simulated terminal prices,
+    including standard error propagation.
 
-    call_option_prices = (np.vectorize(c_payoff))(ST_monte_carlo, K)
+    Parameters
+    ----------
+    ST_monte_carlo : list or np.ndarray
+        Simulated terminal stock prices.
+    K : float
+        Strike price of the option.
+    T : float
+        Time to expiry (in trading days, e.g., 252 for 1 year).
+    r : float
+        Annual risk-free interest rate.
+    showHistogram : bool optional
+        Show the histogram of the call option
 
+    Returns
+    -------
+    estimated_call_option_price : float
+        Estimated option price.
+    standard_error : float
+        Standard error in the estimated option price.
+    """
+    
+    ST_monte_carlo = np.array(ST_monte_carlo)
+    payoffs = np.maximum(ST_monte_carlo - K, 0)
 
-    average_payoff_at_expiry = np.mean(call_option_prices)
-
-    # Discount the average payoff back to today
     # Make sure 't' here is the same 't' (in years) used in your stock_price_monte_carlo function
     t_years = T / 252 # Use the same conversion as in your function
 
-    estimated_call_option_price = average_payoff_at_expiry * np.exp(-r * t_years)
-    return estimated_call_option_price
+    discount_factor = np.exp(-r * t_years)
 
-estimated_call_option_price = estimate_call_option_price(ST_monte_carlo, K)
+    estimated_call_option_price = np.mean(payoffs) * discount_factor
+    standard_error = np.std(payoffs, ddof=1)/np.sqrt(len(payoffs)) * discount_factor
+
+    if showHistogram:
+        plt.hist((payoffs*discount_factor), bins=100)
+        plt.axvline(estimated_call_option_price, color='red', linestyle='-')
+        plt.axvline(estimated_call_option_price+standard_error, color='green', linestyle='--')
+        plt.show()
+
+    return estimated_call_option_price, standard_error
+
+def estimate_call_prices_all_strikes(ST_monte_carlo: np.ndarray, strikes: np.ndarray, T: float, r: float):
+    """
+    Estimate European call option prices and standard errors for all strikes
+    using the same Monte Carlo simulation (vectorized version).
+    """
+    ST_monte_carlo = np.asarray(ST_monte_carlo)
+    strikes = np.asarray(strikes)
+
+    # Reshape strikes to (n_strikes, 1) for broadcasting
+    payoffs = np.maximum(ST_monte_carlo.reshape(1, -1) - strikes.reshape(-1, 1), 0)
+
+    # Discounting factor
+    t_years = T / 252
+    discount_factor = np.exp(-r * t_years)
+
+    # Compute mean and std error along axis=1 (i.e., over simulations)
+    estimated_prices = np.mean(payoffs, axis=1) * discount_factor
+    standard_errors = np.std(payoffs, ddof=1, axis=1) / np.sqrt(payoffs.shape[1]) * discount_factor
+
+    return estimated_prices, standard_errors
 
 # %%
 # Comparison of the computed call option value and the actual call option mid_price
-c_at_strike = spx_options_data[['strike_price', 'mid_price']] # Strike price and mid price at curdate
+estimated_call_option_price, call_option_standard_error = estimate_call_option_price_with_error(
+    ST_monte_carlo, K, T, r
+)
+c_at_strike = spx_options_data[['strike_price', 'best_offer', 'mid_price']] # Strike price and mid price at curdate
 c_at_strike.set_index('strike_price', inplace=True)
 actual_call_option_price = c_at_strike.loc[K].iloc[0]
-print(f'\nEstimated Call Option Price (Monte Carlo): {estimated_call_option_price:.4f}')
+print(f'\nEstimated Call Option Price (Monte Carlo): {estimated_call_option_price:.4f}, SE={call_option_standard_error}')
 print(f'Actual Call Option Price: {actual_call_option_price}')
 
 # %%
 
 # For all strike prices, get the estimated and actual call option prices and store them in a dataframe
-estimated_calls_df = c_at_strike.copy()
-estimated_calls_df['estimated_calls'] = [
-    estimate_call_option_price(ST_monte_carlo, K) for K in estimated_calls_df.index
-]
-estimated_calls_df['estimated_calls'] = np.round(estimated_calls_df['estimated_calls'], 4)
-estimated_calls_df
+estimated_prices, standard_errors = estimate_call_prices_all_strikes(
+    ST_monte_carlo, c_at_strike.index.values, T, r
+)
 
-# %%
+estimated_calls_df = c_at_strike.copy()
+estimated_calls_df['estimated_calls'] = np.round(estimated_prices, 4)
+estimated_calls_df['standard_error'] = np.round(standard_errors, 4)
+price_type = 'mid_price' # Can be mid_price or best_offer
+estimated_calls_df['model_error'] = abs(estimated_calls_df['estimated_calls'] - estimated_calls_df[price_type])
+estimated_calls_df['total_error'] = estimated_calls_df['standard_error'] + estimated_calls_df['model_error']
+
 # Plot a comparison of the calculated call options vs the actual call option prices
 def plot_estimated_call_vs_actual_call():
     plt.figure(figsize=(10, 6))
     
-    plt.plot(estimated_calls_df.index.values, estimated_calls_df['mid_price'], 'ro--', label='Actual Call Price')
-    plt.plot(estimated_calls_df.index.values, estimated_calls_df['estimated_calls'], 'go:', label='Calculated Call Price') 
+    plt.plot(estimated_calls_df.index.values, estimated_calls_df[price_type], 'ro--', label='Actual Call Price')
+
+    plt.errorbar(
+        estimated_calls_df.index.values,
+        estimated_calls_df['estimated_calls'],
+        yerr=estimated_calls_df['total_error'],
+        fmt='go:', 
+        label='Estimated Call Price',
+        capsize=4  # adds little horizontal ticks on error bars
+    )
+
     plt.axvline(spx_price.loc[curdate].close, color='black', linestyle='dashed', label=f'Current Stock Price = {spx_price.loc[curdate].close}')
     
     plt.xlabel('Strike Price')
     plt.ylabel('Call Option Price')
-    plt.title('Callculated Call Price v/s Actual Call Price')
+    plt.title('Estimated Call Price v/s Actual Call Price')
     plt.legend()
     plt.show()
     
@@ -489,27 +624,18 @@ plot_estimated_call_vs_actual_call()
 # Takes 15s in multi threaded mode with 5 cores
 def compute_ivs(row):
     K, row_data = row
-    
-    
 
     iv_estimated = bsHelper.newton_rhapson(
-        ST_monte_carlo_mean, K, r, T, t, 0.16, row_data.estimated_calls, max_iterations=20000, suppressLogs=True, showDiagnosticPlots=True
+        S0, K, r, T, t, 0.16, row_data.estimated_calls, 
+        max_iterations=30000, suppressLogs=True, showDiagnosticPlots=True, tolerance=0.01
     )
 
     iv_actual = bsHelper.newton_rhapson(
-        ST_actual, K, r, T, t, 0.16, row_data.mid_price, max_iterations=20000, suppressLogs=True, showDiagnosticPlots=True
+        S0, K, r, T, t, 0.16, row_data.mid_price, 
+        max_iterations=30000, suppressLogs=True, showDiagnosticPlots=True, tolerance=0.01
     )
-    
-    # iv_estimated = bsHelper.newton_rhapson(
-    #     spx_price.loc[curdate].close, K, r, T, t, 0.16, row_data.estimated_calls, max_iterations=20000, suppressLogs=True, showDiagnosticPlots=True
-    # )
-
-    # iv_actual = bsHelper.newton_rhapson(
-    #     spx_price.loc[curdate].close, K, r, T, t, 0.16, row_data.mid_price, max_iterations=20000, suppressLogs=True, showDiagnosticPlots=True
-    # )
 
     return iv_estimated, iv_actual
-
 
 with multiprocessing.get_context("fork").Pool(5) as pool:
     results = pool.map(compute_ivs, estimated_calls_df.iterrows())
